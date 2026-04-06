@@ -1,0 +1,198 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>PINEAPPLE MYSTERY - Official 1.0</title>
+
+<style>
+:root { --bg: #050505; --accent: #f4d03f; --red: #cc0000; --blue: #2b57ff; --green: #28a745; }
+
+body { 
+  font-family: 'Courier New', monospace; background: var(--bg); color: #e0e0e0;
+  margin: 0; padding: 0; text-align: center; overflow-x: hidden;
+}
+
+.v-tag { position: fixed; top: 45px; right: 20px; font-size: 10px; color: #444; font-weight: bold; z-index: 20; }
+
+.ticker-wrap { width: 100%; overflow: hidden; background: var(--accent); color: #000; padding: 8px 0; font-weight: 900; position: fixed; z-index: 15; }
+.t-top { top: 0; } .t-bottom { bottom: 0; }
+.ticker { display: inline-block; white-space: nowrap; animation: ticker 30s linear infinite; }
+@keyframes ticker { 0% { transform: translateX(0); } 100% { transform: translateX(-50%); } }
+
+/* 로딩 유지 */
+#h-screen {
+  display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+  background: #000; z-index: 100; flex-direction: column; justify-content: center; align-items: center;
+}
+.h-msg { color: #fff; font-size: 14px; margin-bottom: 15px; min-height: 20px; }
+.p-cont { width: 200px; height: 3px; background: #222; }
+.p-bar { width: 0%; height: 100%; background: #fff; transition: width 0.1s; }
+
+.wrapper { min-height: 100vh; display: flex; flex-direction: column; justify-content: center; align-items: center; padding: 20px; }
+.card { background: rgba(15, 15, 15, 0.95); padding: 40px 30px; border-radius: 20px; border: 1px solid #333; width: 100%; max-width: 380px; }
+
+.btn { background: #111; color: #fff; border: 1px solid #444; padding: 16px; border-radius: 8px; cursor: pointer; width: 100%; margin-top: 15px; font-weight: bold; }
+
+#result { display: none; background: #f5f5f5 !important; color: #111; }
+#role { font-size: 48px; font-weight: 900; }
+#skill { font-size: 32px; margin: 15px 0; }
+#desc { font-size: 16px; color: #666; margin-bottom: 30px; }
+
+.sk-gold { color: #b8860b; }
+.sk-pink { color: #ff66ff; }
+.sk-green { color: darkgreen; } /* 감염 */
+</style>
+</head>
+
+<body>
+
+<div class="v-tag">Official 1.0</div>
+
+<div class="ticker-wrap t-top">
+  <div class="ticker">SYSTEM ONLINE 🍍 ACCESS GRANTED 🍍 PINEAPPLE HQ 🍍</div>
+</div>
+
+<div id="h-screen">
+  <div class="h-msg" id="h-msg">INITIALIZING...</div>
+  <div class="p-cont"><div class="p-bar" id="p-bar"></div></div>
+</div>
+
+<div class="wrapper">
+
+<div id="menu" class="card">
+  <h1 style="color:var(--accent);">PINEAPPLE</h1>
+
+  <label>
+    SPECIAL SKILLS
+    <input type="checkbox" id="useSkills" checked>
+  </label><br><br>
+
+  PLAYER COUNT :
+  <input type="number" id="pCount" value="6" min="4" max="20"><br><br>
+
+  <button onclick="bootSystem()" class="btn">START</button>
+</div>
+
+<div id="draw-area" class="card" style="display:none;">
+  <h2 id="pNum"></h2>
+  <button onclick="reveal()" class="btn">확인</button>
+</div>
+
+<div id="result" class="card">
+  <div id="role"></div>
+  <div id="skill"></div>
+  <div id="desc"></div>
+  <button onclick="next()" class="btn">다음</button>
+</div>
+
+</div>
+
+<script>
+const skills = {
+  머더: [
+    {n:"방탄", d:"한 번 공격을 버팁니다. (2목숨)"},
+    {n:"감염", d:"첫 번째로 죽인 대상을 부하로 만듭니다. 감염자는 다른 생존자를 공격할 수 있으나, 1명을 처치하면 즉시 사망합니다. 감염자는 보안관에게 한 번 어깨 터치 당할 시 사망하고, 다른 생존자들을 죽일 때는 보안관처럼 어깨를 2번 터치합니다.", s:"sk-green"}
+  ],
+  보안관: [
+    {n:"강인한", d:"목숨이 2개가 됩니다."},
+    {n:"마피아", d:"머더와 모든 시민을 제거하면 즉시 승리합니다.", s:"sk-gold"}
+  ],
+  의사: [
+    {n:"자가치유", d:"자신을 치료할 수 있습니다. (1회)"},
+    {n:"전문 의사", d:"최대 2명까지 치료할 수 있습니다."}
+  ],
+  시민: [
+    {n:"스파이", d:"시민/보안관 제거 시 목숨 증가, 대신 머더를 죽일 시 둘 다 같이 죽고 시민이 승리." , s:"sk-gold"},
+    {n:"퍼블win", d:"첫 사망 시 시민 승리", s:"sk-pink"},
+    {n:"패링", d:"한 번 공격을 막음"}
+  ]
+};
+
+// 🔥 추가된 부분 (1)
+let usedSkills = {};
+
+function getRandomSkill(role) {
+  // 🔥 수정된 부분 (2)
+  const list = skills[role].filter(s => !usedSkills[s.n]);
+
+  if(list.length === 0){
+    return {n:"무능력", d:"능력이 없습니다."};
+  }
+
+  const rand = Math.random()*100;
+
+  if(rand < 70){
+    return {n:"무능력", d:"능력이 없습니다."};
+  }
+
+  const chosen = list[Math.floor(Math.random() * list.length)];
+
+  usedSkills[chosen.n] = true;
+
+  return chosen;
+}
+
+let tP, cur, rls, aS, uS;
+
+function bootSystem() {
+  document.getElementById("h-screen").style.display = "flex";
+  setTimeout(startGame, 1200);
+}
+
+function startGame() {
+  document.getElementById("h-screen").style.display = "none";
+
+  tP = parseInt(document.getElementById("pCount").value);
+  uS = document.getElementById("useSkills").checked;
+
+  rls = ["머더","보안관","의사"];
+  for(let i=4;i<=tP;i++) rls.push("시민");
+  rls.sort(()=>Math.random()-0.5);
+
+  aS = rls.map(r=>{
+    if(!uS) return {n:"무능력", d:"능력이 없습니다."};
+    return getRandomSkill(r);
+  });
+
+  cur=0;
+
+  document.getElementById("menu").style.display="none";
+  document.getElementById("draw-area").style.display="block";
+  document.getElementById("pNum").innerText="PLAYER 1";
+}
+
+function reveal(){
+  const r = rls[cur];
+  const s = aS[cur];
+
+  document.getElementById("role").innerText = r;
+  document.getElementById("role").style.color =
+    r==="머더"?"var(--red)":
+    r==="보안관"?"var(--blue)":
+    r==="의사"?"var(--green)":"#666";
+
+  document.getElementById("skill").innerText = s.n;
+  document.getElementById("skill").className = s.s || "";
+
+  document.getElementById("desc").innerText = s.d;
+
+  document.getElementById("draw-area").style.display="none";
+  document.getElementById("result").style.display="block";
+}
+
+function next(){
+  cur++;
+  if(cur>=tP){
+    location.reload();
+    return;
+  }
+
+  document.getElementById("result").style.display="none";
+  document.getElementById("draw-area").style.display="block";
+  document.getElementById("pNum").innerText="PLAYER "+(cur+1);
+}
+</script>
+
+</body>
+</html>
